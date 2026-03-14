@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+
+<html lang="pt-br">
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Relatórios">
+
+<link rel="apple-touch-icon" href="icon.png">
+
+<title>Sistema de Relatórios Texugers</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+
+<style>
+
+*{box-sizing:border-box}
+
+@page{margin:18mm}
+
+body{
+font-family:'Roboto',sans-serif;
+background:#eef1f6;
+margin:0;
+padding:40px;
+}
+
+.container{
+max-width:1000px;
+margin:auto;
+}
+
+.topbar{
+display:flex;
+gap:10px;
+flex-wrap:wrap;
+margin-bottom:30px;
+}
+
+button{
+background:#4a6cf7;
+color:white;
+padding:10px 16px;
+border:none;
+border-radius:6px;
+cursor:pointer;
+}
+
+.header{
+display:grid;
+grid-template-columns:120px 1fr 120px;
+align-items:center;
+margin-bottom:40px;
+}
+
+.logo{
+width:120px;
+height:120px;
+object-fit:contain;
+}
+
+.title{
+text-align:center;
+font-size:30px;
+font-weight:800;
+}
+
+.client-info{
+text-align:center;
+margin-top:10px;
+}
+
+#clientName{
+font-size:26px;
+font-weight:700;
+}
+
+.metrics{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+gap:20px;
+}
+
+.metric-card{
+background:white;
+border-radius:14px;
+padding:16px;
+border:1px solid #ececec;
+box-shadow:0 4px 10px rgba(0,0,0,0.06);
+}
+
+.metric-title{
+font-weight:600;
+margin-bottom:6px;
+}
+
+.metric-main{
+display:flex;
+justify-content:space-between;
+align-items:center;
+}
+
+.metric-value{
+font-size:26px;
+font-weight:800;
+}
+
+.metric-growth{
+font-size:16px;
+font-weight:700;
+}
+
+.metric-previous{
+font-size:13px;
+color:#666;
+margin-top:5px;
+}
+
+.positive{color:#18a957}
+.negative{color:#e03131}
+.neutral{color:#000}
+
+.inputs{margin-top:8px}
+
+input,select{
+width:100%;
+padding:6px;
+margin-top:4px;
+}
+
+textarea{
+width:100%;
+height:140px;
+padding:10px;
+font-family:'Roboto',sans-serif;
+}
+
+.remove{
+background:#e03131;
+margin-top:6px;
+}
+
+.section{
+margin-top:50px;
+}
+
+.ranking{
+background:white;
+border-radius:14px;
+padding:20px;
+border:1px solid #ececec;
+box-shadow:0 4px 10px rgba(0,0,0,0.06);
+margin-top:20px;
+}
+
+.chart-container{
+height:320px;
+margin-top:20px;
+}
+
+@media print{
+
+body{
+background:white;
+padding:0;
+}
+
+.topbar,
+.inputs,
+.remove,
+#addMetricBtn,
+input[type=file],
+#clientSelect,
+#periodSelect{
+display:none !important;
+}
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="topbar">
+
+<button onclick="exportPDF()">Exportar PDF</button> <button onclick="saveReport()">Salvar Relatório</button> <button onclick="generateNewReport()">Gerar Novo Relatório</button>
+
+<select id="clientSelect" onchange="updatePeriodList()">
+<option value="">Selecionar Cliente</option>
+</select>
+
+<select id="periodSelect">
+<option value="">Selecionar Período</option>
+</select>
+
+<button onclick="loadReport()">Carregar</button>
+
+</div>
+
+<div class="header">
+
+<div>
+<input type="file" id="logoAgencyInput">
+<img id="logoAgency" class="logo">
+</div>
+
+<div>
+
+<div contenteditable="true" class="title">
+RELATÓRIO DE PERFORMANCE
+</div>
+
+<div class="client-info">
+
+<strong contenteditable="true" id="clientName">
+Nome do Cliente
+</strong>
+
+<br>
+
+<span contenteditable="true" id="period">
+Período do Relatório
+</span>
+
+</div>
+
+</div>
+
+<div>
+<input type="file" id="logoClientInput">
+<img id="logoClient" class="logo">
+</div>
+
+</div>
+
+<div class="metrics" id="metrics"></div>
+
+<br>
+<button onclick="addMetric()" id="addMetricBtn">
+Adicionar Métrica
+</button>
+
+<div class="section">
+
+<h2>Comparativo de Volume</h2>
+<div class="chart-container">
+<canvas id="chartNumber"></canvas>
+</div>
+
+<h2>Comparativo Financeiro</h2>
+<div class="chart-container">
+<canvas id="chartCurrency"></canvas>
+</div>
+
+<h2>Comparativo Percentual</h2>
+<div class="chart-container">
+<canvas id="chartPercent"></canvas>
+</div>
+
+</div>
+
+<div class="section">
+
+<h2>Ranking de Crescimento</h2>
+<div class="ranking" id="ranking"></div>
+
+</div>
+
+<div class="section">
+
+<h2>Observações Estratégicas</h2>
+<textarea id="obs"></textarea>
+
+</div>
+
+</div>
+
+<script>
+
+let container=document.getElementById("metrics")
+
+function parseBrazilNumber(v){
+if(!v)return 0
+v=v.replace(/\./g,"").replace(",",".")
+return parseFloat(v)||0
+}
+
+function formatValue(v,t){
+
+if(t=="currency"){
+return "R$ "+v.toLocaleString("pt-BR",{minimumFractionDigits:2})
+}
+
+if(t=="percent"){
+return v.toLocaleString("pt-BR",{minimumFractionDigits:2})+"%"
+}
+
+return v.toLocaleString("pt-BR")
+
+}
+
+function addMetric(data={}){
+
+let card=document.createElement("div")
+
+card.className="metric-card"
+
+card.innerHTML=`
+
+<div contenteditable="true" class="metric-title">${data.title||"Nova Métrica"}</div>
+
+<div class="metric-main">
+<div class="metric-value">0</div>
+<div class="metric-growth neutral">0%</div>
+</div>
+
+<div class="metric-previous">0 no período anterior</div>
+
+<div class="inputs">
+
+<select class="type">
+<option value="number">Número</option>
+<option value="currency">Moeda</option>
+<option value="percent">Porcentagem</option>
+</select>
+
+<input class="atual" placeholder="Valor atual">
+<input class="anterior" placeholder="Valor anterior">
+
+<select class="rule">
+<option value="higher">Maior é melhor</option>
+<option value="lower">Menor é melhor</option>
+</select>
+
+</div>
+
+<button class="remove">Remover</button>
+`
+
+container.appendChild(card)
+
+card.querySelector(".type").value=data.type||"number"
+card.querySelector(".rule").value=data.rule||"higher"
+
+if(data.atual) card.querySelector(".atual").value=data.atual
+if(data.anterior) card.querySelector(".anterior").value=data.anterior
+
+connectCard(card)
+calculate(card)
+
+}
+
+function connectCard(card){
+
+card.querySelectorAll("input,select").forEach(el=>{
+el.addEventListener("input",()=>calculate(card))
+})
+
+card.querySelector(".remove").onclick=()=>{
+card.remove()
+updateCharts()
+updateRanking()
+}
+
+}
+
+function calculate(card){
+
+let atual=parseBrazilNumber(card.querySelector(".atual").value)
+let anterior=parseBrazilNumber(card.querySelector(".anterior").value)
+
+let type=card.querySelector(".type").value
+let rule=card.querySelector(".rule").value
+
+card.querySelector(".metric-value").innerText=formatValue(atual,type)
+card.querySelector(".metric-previous").innerText=formatValue(anterior,type)+" no período anterior"
+
+let growth=card.querySelector(".metric-growth")
+
+if(anterior==0){
+
+growth.innerText="0%"
+growth.className="metric-growth neutral"
+
+}else{
+
+let change=((atual-anterior)/anterior)*100
+
+growth.innerText=change.toFixed(1)+"%"
+
+let positive=rule=="higher"?change>=0:change<=0
+
+growth.className="metric-growth "+(positive?"positive":"negative")
+
+}
+
+updateCharts()
+updateRanking()
+
+}
+
+function getMetrics(){
+
+let metrics=[]
+
+document.querySelectorAll(".metric-card").forEach(card=>{
+
+metrics.push({
+
+title:card.querySelector(".metric-title").innerText,
+type:card.querySelector(".type").value,
+rule:card.querySelector(".rule").value,
+atual:card.querySelector(".atual").value,
+anterior:card.querySelector(".anterior").value
+
+})
+
+})
+
+return metrics
+
+}
+
+function updateCharts(){
+
+let metrics=getMetrics()
+
+createChart("chartNumber",metrics.filter(m=>m.type=="number"))
+createChart("chartCurrency",metrics.filter(m=>m.type=="currency"))
+createChart("chartPercent",metrics.filter(m=>m.type=="percent"))
+
+}
+
+const chartColors = [
+"#2563eb", // azul
+"#16a34a", // verde
+"#ea580c", // laranja
+"#9333ea", // roxo
+"#dc2626", // vermelho
+"#0891b2", // ciano
+"#ca8a04", // amarelo escuro
+"#4f46e5"  // índigo
+];
+
+function createChart(id,data){
+
+let ctx=document.getElementById(id)
+
+if(!ctx)return
+
+if(ctx.chart) ctx.chart.destroy()
+
+let labels=data.map(m=>m.title)
+let atual=data.map(m=>parseBrazilNumber(m.atual))
+let prev=data.map(m=>parseBrazilNumber(m.anterior))
+
+let colors = labels.map((_,i)=>chartColors[i % chartColors.length])
+
+ctx.chart=new Chart(ctx,{
+type:"bar",
+data:{
+labels:labels,
+datasets:[
+{
+label:"Período Anterior",
+data:prev,
+backgroundColor:"#e5e7eb"
+},
+{
+label:"Período Atual",
+data:atual,
+backgroundColor:colors
+}
+]
+},
+options:{
+responsive:true,
+maintainAspectRatio:false,
+scales:{
+y:{beginAtZero:true}
+}
+}
+})
+
+}
+
+function updateRanking(){
+
+let metrics=getMetrics()
+
+let data=[]
+
+metrics.forEach(m=>{
+
+let atual=parseBrazilNumber(m.atual)
+let anterior=parseBrazilNumber(m.anterior)
+
+if(anterior>0){
+
+let change=((atual-anterior)/anterior)*100
+
+data.push({
+title:m.title,
+change:change
+})
+
+}
+
+})
+
+data.sort((a,b)=>b.change-a.change)
+
+let html=""
+
+data.forEach((m,i)=>{
+html+=`<div>${i+1}. ${m.title} — ${m.change.toFixed(1)}%</div>`
+})
+
+document.getElementById("ranking").innerHTML=html
+
+}
+
+function saveReport(){
+
+let client=document.getElementById("clientName").innerText.trim()
+let period=document.getElementById("period").innerText.trim()
+
+if(!client||!period){
+alert("Informe cliente e período")
+return
+}
+
+let data={
+metrics:getMetrics(),
+obs:document.getElementById("obs").value,
+logoAgency:document.getElementById("logoAgency").src,
+logoClient:document.getElementById("logoClient").src
+}
+
+localStorage.setItem("report_"+client+"_"+period,JSON.stringify(data))
+
+let clients=JSON.parse(localStorage.getItem("clients")||"[]")
+
+if(!clients.includes(client)){
+clients.push(client)
+localStorage.setItem("clients",JSON.stringify(clients))
+}
+
+updateClientList()
+
+alert("Relatório salvo")
+
+}
+
+function loadReport(){
+
+let client=document.getElementById("clientSelect").value
+let period=document.getElementById("periodSelect").value
+
+let data=JSON.parse(localStorage.getItem("report_"+client+"_"+period))
+
+if(!data)return
+
+document.getElementById("clientName").innerText=client
+document.getElementById("period").innerText=period
+
+container.innerHTML=""
+
+data.metrics.forEach(m=>{
+addMetric(m)
+})
+
+document.getElementById("obs").value=data.obs||""
+document.getElementById("logoAgency").src=data.logoAgency||""
+document.getElementById("logoClient").src=data.logoClient||""
+
+updateCharts()
+updateRanking()
+
+}
+
+function generateNewReport(){
+
+document.querySelectorAll(".metric-card").forEach(card=>{
+
+let atual=card.querySelector(".atual").value
+
+card.querySelector(".anterior").value=atual
+card.querySelector(".atual").value=""
+
+calculate(card)
+
+})
+
+alert("Novo relatório iniciado. Atualize o período.")
+
+}
+
+function updateClientList(){
+
+let clients=JSON.parse(localStorage.getItem("clients")||"[]")
+
+let select=document.getElementById("clientSelect")
+
+select.innerHTML='<option value="">Selecionar Cliente</option>'
+
+clients.forEach(c=>{
+select.innerHTML+=`<option value="${c}">${c}</option>`
+})
+
+}
+
+function updatePeriodList(){
+
+let client=document.getElementById("clientSelect").value
+
+let select=document.getElementById("periodSelect")
+
+select.innerHTML='<option value="">Selecionar Período</option>'
+
+for(let key in localStorage){
+
+if(key.startsWith("report_"+client+"_")){
+
+let period=key.replace("report_"+client+"_","")
+
+select.innerHTML+=`<option value="${period}">${period}</option>`
+
+}
+
+}
+
+}
+
+function exportPDF(){
+window.print()
+}
+
+document.getElementById("logoAgencyInput").addEventListener("change",function(e){
+let r=new FileReader()
+r.onload=()=>document.getElementById("logoAgency").src=r.result
+r.readAsDataURL(e.target.files[0])
+})
+
+document.getElementById("logoClientInput").addEventListener("change",function(e){
+let r=new FileReader()
+r.onload=()=>document.getElementById("logoClient").src=r.result
+r.readAsDataURL(e.target.files[0])
+})
+
+updateClientList()
+
+addMetric()
+addMetric()
+addMetric()
+
+</script>
+
+</body>
+</html>
