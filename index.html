@@ -1,17 +1,9 @@
 <!DOCTYPE html>
-
 <html lang="pt-br">
 <head>
 
 <meta charset="UTF-8">
-
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Relatórios">
-
-<link rel="apple-touch-icon" href="icon.png">
-
-<title>Sistema de Relatórios Texugers</title>
+<title>Sistema de Relatório dos Clientes Texugers</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -81,6 +73,21 @@ font-weight:700;
 }
 
 .metrics{
+display:flex;
+flex-direction:column;
+gap:20px;
+}
+
+.section-title{
+font-size:22px;
+font-weight:800;
+margin-top:40px;
+text-align:center;
+padding-bottom:6px;
+border-bottom:2px solid #e5e7eb;
+}
+
+.metric-grid{
 display:grid;
 grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
 gap:20px;
@@ -163,25 +170,60 @@ height:320px;
 margin-top:20px;
 }
 
+canvas{
+  background:white;
+  border-radius:10px;
+  padding:10px;
+}
+
 @media print{
 
+#cover{
+  display:block !important;
+  page-break-after: always;
+}
+
 body{
-background:white;
-padding:0;
+  background:white;
+  padding:0;
+}
+
+.container{
+  max-width:100%;
 }
 
 .topbar,
 .inputs,
 .remove,
-#addMetricBtn,
-input[type=file],
-#clientSelect,
-#periodSelect{
-display:none !important;
+button,
+input,
+select,
+textarea,
+.channel {
+  display:none !important;
+}
+
+.metric-card{
+  page-break-inside: avoid;
+}
+
+.section{
+  page-break-before: always;
+}
+
+.chart-container{
+  height:280px;
+}
+
+h2{
+  margin-top:40px;
+}
+
+.section-title{
+  margin-top:30px;
 }
 
 }
-
 </style>
 
 </head>
@@ -190,9 +232,29 @@ display:none !important;
 
 <div class="container">
 
+<div id="cover" style="display:none;">
+
+  <h1 style="text-align:center; font-size:40px; margin-top:200px;">
+    Relatório de Performance
+  </h1>
+
+  <p style="text-align:center; font-size:20px; margin-top:20px;">
+    <span id="coverClient"></span><br>
+    <span id="coverPeriod"></span>
+  </p>
+
+</div>
+
 <div class="topbar">
 
-<button onclick="exportPDF()">Exportar PDF</button> <button onclick="saveReport()">Salvar Relatório</button> <button onclick="generateNewReport()">Gerar Novo Relatório</button>
+<button onclick="exportPDF()">Exportar PDF</button>
+<button onclick="saveReport()">Salvar Relatório</button>
+<button onclick="generateNewReport()">Gerar Novo Relatório</button>
+<button onclick="deleteReport()">Excluir Relatório</button>
+<button onclick="deleteClient()">Excluir Cliente</button>
+
+<button onclick="exportBackup()">Exportar Backup</button>
+<input type="file" id="importFile" onchange="importBackup(event)">
 
 <select id="clientSelect" onchange="updatePeriodList()">
 <option value="">Selecionar Cliente</option>
@@ -242,44 +304,29 @@ Período do Relatório
 
 </div>
 
-<div class="metrics" id="metrics"></div>
+<div id="metrics"></div>
 
 <br>
-<button onclick="addMetric()" id="addMetricBtn">
-Adicionar Métrica
-</button>
 
 <div class="section">
 
-<h2>Comparativo de Volume</h2>
-<div class="chart-container">
-<canvas id="chartNumber"></canvas>
+<div class="section" id="chartsByPlatform">
+  <h2>Comparativo por Plataforma</h2>
 </div>
 
-<h2>Comparativo Financeiro</h2>
-<div class="chart-container">
-<canvas id="chartCurrency"></canvas>
-</div>
-
-<h2>Comparativo Percentual</h2>
-<div class="chart-container">
-<canvas id="chartPercent"></canvas>
-</div>
-
-</div>
 
 <div class="section">
-
 <h2>Ranking de Crescimento</h2>
 <div class="ranking" id="ranking"></div>
-
 </div>
 
 <div class="section">
+
+<h2>Resumo do Período</h2>
+<div class="ranking" id="summary"></div>
 
 <h2>Observações Estratégicas</h2>
 <textarea id="obs"></textarea>
-
 </div>
 
 </div>
@@ -287,36 +334,54 @@ Adicionar Métrica
 <script>
 
 let container=document.getElementById("metrics")
+let metricOrder = 0
+const channels = ["Meta Ads","Google Ads","Instagram","Facebook","Outros"]
 
-function parseBrazilNumber(v){
-if(!v)return 0
-v=v.replace(/\./g,"").replace(",",".")
-return parseFloat(v)||0
+function createSections(){
+
+container.innerHTML = ""
+
 }
 
-function formatValue(v,t){
+function ensureSectionExists(channel){
 
-if(t=="currency"){
-return "R$ "+v.toLocaleString("pt-BR",{minimumFractionDigits:2})
-}
+let gridId = "grid_"+channel.replace(/\s/g,'')
 
-if(t=="percent"){
-return v.toLocaleString("pt-BR",{minimumFractionDigits:2})+"%"
-}
+if(document.getElementById(gridId)) return
 
-return v.toLocaleString("pt-BR")
+let section = document.createElement("div")
+
+section.innerHTML = `
+  <div class="section-title">${channel}</div>
+
+  <div class="metric-grid" id="${gridId}"></div>
+
+  <div style="margin-top:15px;">
+    <button onclick="addMetric({channel: '${channel}'})">
+      + Adicionar Métrica
+    </button>
+  </div>
+`
+container.appendChild(section)
 
 }
 
 function addMetric(data={}){
 
 let card=document.createElement("div")
-
 card.className="metric-card"
 
 card.innerHTML=`
 
 <div contenteditable="true" class="metric-title">${data.title||"Nova Métrica"}</div>
+
+<select class="channel">
+  <option value="Meta Ads">Meta Ads</option>
+  <option value="Google Ads">Google Ads</option>
+  <option value="Instagram">Instagram</option>
+  <option value="Facebook">Facebook</option>
+  <option value="Outros">Outros</option>
+</select>
 
 <div class="metric-main">
 <div class="metric-value">0</div>
@@ -346,38 +411,123 @@ card.innerHTML=`
 <button class="remove">Remover</button>
 `
 
-container.appendChild(card)
+let ch = data.channel
+
+if(!ch){
+  let lastGrid = document.querySelector(".metric-grid:last-of-type")
+  
+  if(lastGrid){
+    ch = lastGrid.id.replace("grid_","")
+  } else {
+    ch = "Meta Ads"
+  }
+}
+
+ensureSectionExists(ch)
+
+let grid = document.getElementById("grid_"+ch.replace(/\s/g,""))
+
+if(grid){
+  grid.appendChild(card)
+}
 
 card.querySelector(".type").value=data.type||"number"
 card.querySelector(".rule").value=data.rule||"higher"
-
+if(data.channel) card.querySelector(".channel").value=data.channel
+if(data.order !== undefined){
+card.dataset.order = data.order
+} else {
+card.dataset.order = metricOrder++
+}
 if(data.atual) card.querySelector(".atual").value=data.atual
 if(data.anterior) card.querySelector(".anterior").value=data.anterior
 
 connectCard(card)
 calculate(card)
+updateSummary()
+
+setTimeout(()=>{
+  card.querySelector(".metric-title").focus()
+},50)
 
 }
 
 function connectCard(card){
 
-card.querySelectorAll("input,select").forEach(el=>{
-el.addEventListener("input",()=>calculate(card))
+card.querySelectorAll("input").forEach(el=>{
+el.addEventListener("input",()=>{
+calculate(card)
+})
 })
 
+card.querySelectorAll("select").forEach(el=>{
+el.addEventListener("change",()=>{
+calculate(card)
+})
+})
+
+let channelSelect = card.querySelector(".channel")
+
+let originalValue = channelSelect.value
+
+channelSelect.addEventListener("focus",()=>{
+  originalValue = channelSelect.value
+})
+
+channelSelect.addEventListener("keydown",(e)=>{
+  if(e.key === "Tab"){
+
+    let newValue = channelSelect.value
+
+    if(newValue !== originalValue){
+
+      ensureSectionExists(newValue)
+
+      let grid = document.getElementById("grid_"+newValue.replace(/\s/g,""))
+
+      if(grid){
+        grid.appendChild(card)
+
+    cleanEmptySections()
+
+        setTimeout(()=>{
+          channelSelect.focus()
+        },10)
+      }
+
+    }
+
+  }
+})
+
+
 card.querySelector(".remove").onclick=()=>{
-card.remove()
-updateCharts()
-updateRanking()
+  card.remove()
+  cleanEmptySections()
+  updateCharts()
+  updateRanking()
+  updateSummary()
 }
 
+}
+
+
+function parseBrazilNumber(v){
+if(!v)return 0
+v=v.replace(/\./g,"").replace(",",".")
+return parseFloat(v)||0
+}
+
+function formatValue(v,t){
+if(t=="currency") return "R$ "+v.toLocaleString("pt-BR",{minimumFractionDigits:2})
+if(t=="percent") return v.toLocaleString("pt-BR",{minimumFractionDigits:2})+"%"
+return v.toLocaleString("pt-BR")
 }
 
 function calculate(card){
 
 let atual=parseBrazilNumber(card.querySelector(".atual").value)
 let anterior=parseBrazilNumber(card.querySelector(".anterior").value)
-
 let type=card.querySelector(".type").value
 let rule=card.querySelector(".rule").value
 
@@ -387,24 +537,18 @@ card.querySelector(".metric-previous").innerText=formatValue(anterior,type)+" no
 let growth=card.querySelector(".metric-growth")
 
 if(anterior==0){
-
 growth.innerText="0%"
 growth.className="metric-growth neutral"
-
 }else{
-
 let change=((atual-anterior)/anterior)*100
-
 growth.innerText=change.toFixed(1)+"%"
-
 let positive=rule=="higher"?change>=0:change<=0
-
 growth.className="metric-growth "+(positive?"positive":"negative")
-
 }
 
 updateCharts()
 updateRanking()
+updateSummary()
 
 }
 
@@ -419,9 +563,10 @@ metrics.push({
 title:card.querySelector(".metric-title").innerText,
 type:card.querySelector(".type").value,
 rule:card.querySelector(".rule").value,
+channel:(card.querySelector(".channel")?.value || "Outros"),
 atual:card.querySelector(".atual").value,
-anterior:card.querySelector(".anterior").value
-
+anterior:card.querySelector(".anterior").value,
+order: card.dataset.order
 })
 
 })
@@ -430,65 +575,115 @@ return metrics
 
 }
 
-function updateCharts(){
+function cleanEmptySections(){
 
-let metrics=getMetrics()
+  document.querySelectorAll(".metric-grid").forEach(grid=>{
 
-createChart("chartNumber",metrics.filter(m=>m.type=="number"))
-createChart("chartCurrency",metrics.filter(m=>m.type=="currency"))
-createChart("chartPercent",metrics.filter(m=>m.type=="percent"))
+    if(grid.children.length === 0){
+
+      let section = grid.parentElement
+      section.remove()
+
+    }
+
+  })
 
 }
 
-const chartColors = [
-"#2563eb", // azul
-"#16a34a", // verde
-"#ea580c", // laranja
-"#9333ea", // roxo
-"#dc2626", // vermelho
-"#0891b2", // ciano
-"#ca8a04", // amarelo escuro
-"#4f46e5"  // índigo
-];
+function updateCharts(){
+
+let metrics = getMetrics()
+
+let grouped = {
+  "Meta Ads": [],
+  "Google Ads": [],
+  "Instagram": [],
+  "Facebook": [],
+  "Outros": []
+}
+
+metrics.forEach(m=>{
+  let ch = m.channel || "Outros"
+  if(!grouped[ch]) grouped[ch] = []
+  grouped[ch].push(m)
+})
+
+let container = document.getElementById("chartsByPlatform")
+
+if(!container) return
+
+container.innerHTML = "<h2>Comparativo por Plataforma</h2>"
+
+Object.keys(grouped).forEach(platform=>{
+
+  let list = grouped[platform]
+
+  if(list.length === 0) return
+
+  let section = document.createElement("div")
+  section.style.marginBottom = "50px"
+
+  section.innerHTML = `
+    <h3 style="text-align:center;">${platform}</h3>
+  `
+
+  container.appendChild(section)
+
+  let numbers = list.filter(m=>m.type=="number")
+  let currency = list.filter(m=>m.type=="currency")
+  let percent = list.filter(m=>m.type=="percent")
+
+  function createBlock(title, id, data){
+    if(data.length === 0) return
+
+    let block = document.createElement("div")
+    block.style.marginBottom = "30px"
+
+    block.innerHTML = `
+      <h4 style="text-align:center;">${title}</h4>
+      <div class="chart-container">
+        <canvas id="${id}"></canvas>
+      </div>
+    `
+
+    section.appendChild(block)
+
+    createChart(id, data)
+  }
+
+  let baseId = platform.replace(/\s/g,'')
+
+  createBlock("Volume", "chart_num_"+baseId, numbers)
+  createBlock("Financeiro", "chart_cur_"+baseId, currency)
+  createBlock("Percentual", "chart_per_"+baseId, percent)
+
+})
+
+}
+
+const chartColors=["#2563eb","#16a34a","#ea580c","#9333ea","#dc2626","#0891b2","#ca8a04","#4f46e5"]
 
 function createChart(id,data){
 
 let ctx=document.getElementById(id)
-
 if(!ctx)return
-
 if(ctx.chart) ctx.chart.destroy()
 
 let labels=data.map(m=>m.title)
 let atual=data.map(m=>parseBrazilNumber(m.atual))
 let prev=data.map(m=>parseBrazilNumber(m.anterior))
-
-let colors = labels.map((_,i)=>chartColors[i % chartColors.length])
+let colors=labels.map((_,i)=>chartColors[i%chartColors.length])
 
 ctx.chart=new Chart(ctx,{
 type:"bar",
 data:{
 labels:labels,
 datasets:[
-{
-label:"Período Anterior",
-data:prev,
-backgroundColor:"#e5e7eb"
-},
-{
-label:"Período Atual",
-data:atual,
-backgroundColor:colors
-}
+{label:"Período Anterior",data:prev,backgroundColor:"#e5e7eb"},
+{label:"Período Atual",data:atual,backgroundColor:colors}
 ]
 },
-options:{
-responsive:true,
-maintainAspectRatio:false,
-scales:{
-y:{beginAtZero:true}
-}
-}
+options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true}}}
 })
 
 }
@@ -496,36 +691,159 @@ y:{beginAtZero:true}
 function updateRanking(){
 
 let metrics=getMetrics()
-
 let data=[]
 
 metrics.forEach(m=>{
-
 let atual=parseBrazilNumber(m.atual)
 let anterior=parseBrazilNumber(m.anterior)
 
 if(anterior>0){
-
 let change=((atual-anterior)/anterior)*100
-
-data.push({
-title:m.title,
-change:change
-})
-
+data.push({title:m.title,change:change})
 }
-
 })
 
 data.sort((a,b)=>b.change-a.change)
 
 let html=""
-
 data.forEach((m,i)=>{
 html+=`<div>${i+1}. ${m.title} — ${m.change.toFixed(1)}%</div>`
 })
 
 document.getElementById("ranking").innerHTML=html
+
+}
+
+
+function updateSummary(){
+
+let metrics = getMetrics()
+
+let platforms = {
+  "Meta Ads": [],
+  "Google Ads": [],
+  "Instagram": [],
+  "Facebook": [],
+  "Outros": []
+}
+
+metrics.forEach(m=>{
+  let ch = m.channel?.trim() || "Outros"
+
+  if(!platforms[ch]){
+    platforms[ch] = []
+  }
+
+  platforms[ch].push(m)
+})
+
+let html = ""
+
+function generateBlock(title, list){
+
+  if(!list || list.length === 0) return ""
+
+  let positivos = []
+  let negativos = []
+
+  list.forEach(m=>{
+
+    let atual = parseBrazilNumber(m.atual)
+    let anterior = parseBrazilNumber(m.anterior)
+
+    if(anterior > 0){
+
+      let change = ((atual - anterior) / anterior) * 100
+
+      if(change > 0){
+        positivos.push({title:m.title, change})
+      } else if(change < 0){
+        negativos.push({title:m.title, change})
+      }
+
+    }
+
+  })
+
+  positivos.sort((a,b)=>b.change-a.change)
+  negativos.sort((a,b)=>a.change-b.change)
+
+  let block = `<div style="margin-bottom:20px">`
+  block += `<strong style="font-size:16px">📊 ${title}</strong><br>`
+
+  if(positivos.length > 0){
+    block += `<span>📈 <strong>Destaques:</strong></span><br>`
+    positivos.slice(0,2).forEach(m=>{
+      block += `• ${m.title} cresceu ${m.change.toFixed(1)}%<br>`
+    })
+  }
+
+  if(negativos.length > 0){
+    block += `<span>📉 <strong>Atenção:</strong></span><br>`
+    negativos.slice(0,2).forEach(m=>{
+      block += `• ${m.title} caiu ${Math.abs(m.change).toFixed(1)}%<br>`
+    })
+  }
+
+  block += `</div>`
+
+  return block
+}
+
+
+html += generateBlock("Meta Ads", platforms["Meta Ads"])
+html += generateBlock("Google Ads", platforms["Google Ads"])
+html += generateBlock("Instagram", platforms["Instagram"])
+html += generateBlock("Facebook", platforms["Facebook"])
+html += generateBlock("Outros", platforms["Outros"])
+
+
+let summaryEl = document.getElementById("summary")
+
+if(summaryEl){
+  summaryEl.innerHTML = html || "Sem dados suficientes para gerar resumo."
+}
+
+}
+
+function exportBackup(){
+
+let data={}
+
+for(let i=0;i<localStorage.length;i++){
+let key=localStorage.key(i)
+data[key]=localStorage.getItem(key)
+}
+
+let blob=new Blob([JSON.stringify(data)],{type:"application/json"})
+let a=document.createElement("a")
+a.href=URL.createObjectURL(blob)
+a.download="backup-relatorios.json"
+a.click()
+
+}
+
+function importBackup(event){
+
+let file=event.target.files[0]
+if(!file)return
+
+let reader=new FileReader()
+
+reader.onload=function(e){
+
+let data=JSON.parse(e.target.result)
+
+Object.keys(data).forEach(key=>{
+localStorage.setItem(key,data[key])
+})
+
+alert("Backup importado com sucesso!")
+updateClientList()
+
+}
+
+reader.readAsText(file)
 
 }
 
@@ -556,8 +874,57 @@ localStorage.setItem("clients",JSON.stringify(clients))
 }
 
 updateClientList()
-
 alert("Relatório salvo")
+
+}
+
+function deleteReport(){
+
+let client=document.getElementById("clientSelect").value
+let period=document.getElementById("periodSelect").value
+
+if(!client||!period){
+alert("Selecione cliente e período")
+return
+}
+
+let key="report_"+client+"_"+period
+
+if(localStorage.getItem(key)){
+localStorage.removeItem(key)
+alert("Relatório excluído")
+}
+
+updatePeriodList()
+
+}
+
+function deleteClient(){
+
+let client=document.getElementById("clientSelect").value
+
+if(!client){
+alert("Selecione um cliente")
+return
+}
+
+if(!confirm("Excluir TODOS relatórios deste cliente?")) return
+
+for(let key in localStorage){
+if(key.startsWith("report_"+client+"_")){
+localStorage.removeItem(key)
+}
+}
+
+let clients=JSON.parse(localStorage.getItem("clients")||"[]")
+clients=clients.filter(c=>c!==client)
+
+localStorage.setItem("clients",JSON.stringify(clients))
+
+updateClientList()
+document.getElementById("periodSelect").innerHTML='<option>Selecionar Período</option>'
+
+alert("Cliente excluído")
 
 }
 
@@ -575,9 +942,18 @@ document.getElementById("period").innerText=period
 
 container.innerHTML=""
 
+
 data.metrics.forEach(m=>{
-addMetric(m)
+
+  if(!m.channel){
+    m.channel = "Meta Ads"
+  }
+
+  addMetric(m)
+
 })
+
+cleanEmptySections()
 
 document.getElementById("obs").value=data.obs||""
 document.getElementById("logoAgency").src=data.logoAgency||""
@@ -585,23 +961,22 @@ document.getElementById("logoClient").src=data.logoClient||""
 
 updateCharts()
 updateRanking()
+updateSummary()
 
 }
 
 function generateNewReport(){
 
 document.querySelectorAll(".metric-card").forEach(card=>{
-
 let atual=card.querySelector(".atual").value
-
 card.querySelector(".anterior").value=atual
 card.querySelector(".atual").value=""
-
 calculate(card)
-
 })
 
 alert("Novo relatório iniciado. Atualize o período.")
+
+updateSummary()
 
 }
 
@@ -622,36 +997,48 @@ select.innerHTML+=`<option value="${c}">${c}</option>`
 function updatePeriodList(){
 
 let client=document.getElementById("clientSelect").value
-
 let select=document.getElementById("periodSelect")
 
 select.innerHTML='<option value="">Selecionar Período</option>'
 
 for(let key in localStorage){
-
 if(key.startsWith("report_"+client+"_")){
-
 let period=key.replace("report_"+client+"_","")
-
 select.innerHTML+=`<option value="${period}">${period}</option>`
-
 }
-
 }
 
 }
 
 function exportPDF(){
-window.print()
+
+  document.getElementById("coverClient").innerText =
+    document.getElementById("clientName").innerText
+
+  document.getElementById("coverPeriod").innerText =
+    document.getElementById("period").innerText
+
+  let cover = document.getElementById("cover")
+  cover.style.display = "block"
+
+  updateCharts()
+  updateRanking()
+  updateSummary()
+
+  setTimeout(()=>{
+    window.print()
+    cover.style.display = "none"
+  }, 500)
+
 }
 
-document.getElementById("logoAgencyInput").addEventListener("change",function(e){
+document.getElementById("logoAgencyInput").addEventListener("change",e=>{
 let r=new FileReader()
 r.onload=()=>document.getElementById("logoAgency").src=r.result
 r.readAsDataURL(e.target.files[0])
 })
 
-document.getElementById("logoClientInput").addEventListener("change",function(e){
+document.getElementById("logoClientInput").addEventListener("change",e=>{
 let r=new FileReader()
 r.onload=()=>document.getElementById("logoClient").src=r.result
 r.readAsDataURL(e.target.files[0])
