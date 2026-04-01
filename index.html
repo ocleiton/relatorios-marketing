@@ -150,9 +150,11 @@ margin-top:4px;
 
 textarea{
 width:100%;
-height:140px;
-padding:10px;
+height:180px;
+padding:12px;
 font-family:'Roboto',sans-serif;
+font-size:16px;
+line-height:1.5;
 }
 
 .remove{
@@ -186,10 +188,6 @@ canvas{
 
 @media print{
 
-#cover{
-  display:block !important;
-  page-break-after: always;
-}
 
 body{
   background:white;
@@ -209,6 +207,22 @@ select,
 textarea,
 .channel {
   display:none !important;
+}
+
+.cover-page{
+display:flex !important;
+page-break-after:always;
+}
+
+textarea {
+  display: none !important;
+}
+
+#obsPrint {
+  display: block !important;
+  white-space: pre-wrap;
+  font-size: 14px;
+  margin-top: 10px;
 }
 
 .metric-card{
@@ -231,7 +245,74 @@ h2{
   margin-top:30px;
 }
 
+#obs {
+  display: none !important;
 }
+
+#obsPrint {
+  display: block !important;
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-top: 10px;
+}
+
+.container{
+  margin: 0;
+  padding: 0;
+}
+
+body{
+  margin: 0;
+}
+
+.section:first-of-type{
+  page-break-before: auto;
+}
+
+.header{
+  page-break-before: auto;
+}
+
+}
+
+#obsPrint {
+  display: none;
+}
+
+.cover-page{
+display:none;
+height:100vh;
+justify-content:center;
+align-items:center;
+flex-direction:column;
+text-align:center;
+background: linear-gradient(135deg, #4a6cf7, #1e293b);
+color:white;
+}
+
+.cover-logo{
+width:180px;
+margin-bottom:30px;
+}
+
+.cover-title{
+font-size:32px;
+font-weight:800;
+margin-bottom:20px;
+}
+
+.cover-client{
+font-size:26px;
+font-weight:600;
+margin-bottom:10px;
+}
+
+.cover-period{
+font-size:18px;
+color:#555;
+}
+
 </style>
 
 </head>
@@ -240,16 +321,15 @@ h2{
 
 <div class="container">
 
-<div id="cover" style="display:none;">
+<div class="cover-page">
 
-  <h1 style="text-align:center; font-size:40px; margin-top:200px;">
-    Relatório de Performance
-  </h1>
+  <img id="coverLogo" class="cover-logo">
 
-  <p style="text-align:center; font-size:20px; margin-top:20px;">
-    <span id="coverClient"></span><br>
-    <span id="coverPeriod"></span>
-  </p>
+  <div class="cover-title">RELATÓRIO DE PERFORMANCE</div>
+
+  <div class="cover-client" id="coverClient">Nome do Cliente</div>
+
+  <div class="cover-period" id="coverPeriod">Período do Relatório</div>
 
 </div>
 
@@ -335,6 +415,7 @@ Período do Relatório
 
 <h2>Observações Estratégicas</h2>
 <textarea id="obs"></textarea>
+<div id="obsPrint"></div>
 </div>
 
 </div>
@@ -1026,8 +1107,6 @@ function exportPDF(){
   document.getElementById("coverPeriod").innerText =
     document.getElementById("period").innerText
 
-  let cover = document.getElementById("cover")
-  cover.style.display = "block"
 
   updateCharts()
   updateRanking()
@@ -1035,7 +1114,6 @@ function exportPDF(){
 
   setTimeout(()=>{
     window.print()
-    cover.style.display = "none"
   }, 500)
 
 }
@@ -1057,6 +1135,23 @@ updateClientList()
 addMetric()
 addMetric()
 addMetric()
+
+
+window.addEventListener("beforeprint", () => {
+  let text = document.getElementById("obs").value
+  document.getElementById("obsPrint").innerText = text
+
+
+  document.getElementById("coverClient").innerText =
+    document.getElementById("clientName").innerText
+
+  document.getElementById("coverPeriod").innerText =
+    document.getElementById("period").innerText
+
+  document.getElementById("coverLogo").src =
+    document.getElementById("logoAgency").src
+
+})
 
 </script>
 
